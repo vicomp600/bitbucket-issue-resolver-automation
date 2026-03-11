@@ -17,9 +17,17 @@ export async function run({
   ).toString("base64");
 
   async function bitbucketRequest(path, options = {}) {
-    const response = await fetch(`https://api.bitbucket.org/2.0${path}`, {
-      headers: { Authorization: `Basic ${bitbucketAuth}`, ...options.headers },
+    const url = `https://api.bitbucket.org/2.0${path}`;
+    const method = options.method || "GET";
+    console.log(`[bitbucket] ${method} ${url}`);
+    console.log(
+      `[bitbucket] workspace=${workspace} user=${process.env.BITBUCKET_USERNAME}`
+    );
+    if (options.body) console.log(`[bitbucket] body=${options.body}`);
+
+    const response = await fetch(url, {
       ...options,
+      headers: { Authorization: `Basic ${bitbucketAuth}`, ...options.headers },
     });
     if (!response.ok) {
       const body = await response.text();
@@ -75,14 +83,19 @@ export async function run({
   async function createPullRequest(repoSlug, prBranch, title, description) {
     const existing = await findExistingPullRequest(repoSlug, prBranch);
     if (existing) {
-      console.log(`PR already exists for ${prBranch}: ${existing.links.html.href}`);
+      console.log(
+        `PR already exists for ${prBranch}: ${existing.links.html.href}`
+      );
       return existing;
     }
     const response = await bitbucketRequest(
       `/repositories/${workspace}/${repoSlug}/pullrequests`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
         body: JSON.stringify({
           title,
           description,
