@@ -98,7 +98,7 @@ Cap combined text at ~8000 chars (title + description + comments, newest first)
 > Use **Bitbucket API Tokens** (Bearer auth) instead.
 
 ```
-Auth: Authorization: Bearer {BITBUCKET_API_TOKEN}
+Auth: Authorization: Bearer {BITBUCKET_API_KEY}
 GET https://api.bitbucket.org/2.0/repositories/{workspace}/{repo_slug}/src/?pagelen=100
 
 Create token at:
@@ -109,7 +109,7 @@ Scopes needed (minimal):
   - repository:read
   - pullrequest:write
 
-Env vars: BITBUCKET_WORKSPACE, BITBUCKET_API_TOKEN
+Env vars: BITBUCKET_WORKSPACE, BITBUCKET_API_KEY
 Returns: list of file paths only — do NOT fetch file contents here
 Run for each repo in parallel if multiple repos provided
 ```
@@ -279,7 +279,7 @@ if (event.text?.startsWith("🔍")) return  // ignore bot's own analysis message
 2. Create token with **only** these scopes:
    - `Repositories: Read`
    - `Pull requests: Write`
-3. Add to Pipedream env vars: `BITBUCKET_API_TOKEN`, `BITBUCKET_WORKSPACE`
+3. Add to Pipedream env vars: `BITBUCKET_API_KEY`, `BITBUCKET_WORKSPACE`
 
 > Note: App Passwords are deprecated (cannot create new ones since Sept 2025,
 > stop working entirely June 9, 2026). Use API tokens with Bearer auth only.
@@ -292,7 +292,7 @@ if (event.text?.startsWith("🔍")) return  // ignore bot's own analysis message
 | --------------------- | -------------------------------------------------------- |
 | `MONDAY_API_TOKEN`    | Monday.com → Profile picture → Developers → API v2 Token |
 | `BITBUCKET_WORKSPACE` | Your workspace slug (from bitbucket.org/{workspace})     |
-| `BITBUCKET_API_TOKEN` | Bitbucket → Personal settings → Access tokens            |
+| `BITBUCKET_API_KEY`   | Bitbucket → Personal settings → Access tokens            |
 | `GOOGLE_AI_API_KEY`   | aistudio.google.com → Get API key (free, no credit card) |
 
 ---
