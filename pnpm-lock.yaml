@@ -1,0 +1,23 @@
+lockfileVersion: '9.0'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false
+
+importers:
+
+  .:
+    dependencies:
+      '@pipedream/sdk':
+        specifier: ^2.3.8
+        version: 2.3.8
+
+packages:
+
+  '@pipedream/sdk@2.3.8':
+    resolution: {integrity: sha512-GicVUZPoOFqcCTDvWJJorftY+MX/pGNiHxf34z4kKiorf1EpfKN0f5xNf+G0i0BY03E4aarFYfm0kCldjLe/+w==}
+    engines: {node: '>=18.0.0'}
+
+snapshots:
+
+  '@pipedream/sdk@2.3.8': {}
