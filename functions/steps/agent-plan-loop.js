@@ -310,7 +310,7 @@ export async function run({
         {
           name: "write_fix",
           description:
-            "Your required final action. Submit your findings and, if confident, the exact file changes needed. A separate step will handle committing the files and opening the pull request — your job is only to provide the new file contents. You must call this to finish — do not end without calling it.",
+            "Your required final action. Submit your findings and, if confident, targeted search/replace edits for each file. A separate step will apply your edits to the original files, commit them, and open the pull request. You must call this to finish — do not end without calling it.",
           parametersJsonSchema: {
             type: "object",
             properties: {
@@ -339,13 +339,29 @@ export async function run({
                   properties: {
                     repo_slug: { type: "string" },
                     path: { type: "string" },
-                    new_content: {
-                      type: "string",
+                    edits: {
+                      type: "array",
                       description:
-                        "The COMPLETE new file contents. Never truncate, summarize, or use placeholders like '// ... rest of file' or '// existing code'. Every line of the final file must be present.",
+                        "Targeted search/replace edits. Each `search` string must be copied verbatim from the file and must match exactly one location.",
+                      items: {
+                        type: "object",
+                        properties: {
+                          search: {
+                            type: "string",
+                            description:
+                              "Exact multi-line text to find in the file, copied verbatim from read_file output. Must be unique within the file.",
+                          },
+                          replace: {
+                            type: "string",
+                            description:
+                              "The replacement text with the fix applied.",
+                          },
+                        },
+                        required: ["search", "replace"],
+                      },
                     },
                   },
-                  required: ["repo_slug", "path", "new_content"],
+                  required: ["repo_slug", "path", "edits"],
                 },
               },
               fix_description: {
@@ -394,7 +410,7 @@ ${repoTreeSummary}
 1. Before doing anything, list out specific investigation steps based on the issue. Identify which files or modules are likely involved.
 2. The root-level file tree for each repo is already provided above — do not call get_file_tree for the root. Only use get_file_tree to explore subdirectories that look relevant to the issue.
 3. Use search_code to find function names, error messages, or patterns mentioned in the issue.
-4. Choose decision="fix" if: you have read the relevant files, the root cause is clear and isolated, the change touches ≤${MAX_FILES_TO_EDIT} files, and you have confidence ≥${MIN_FIX_CONFIDENCE}. Provide the COMPLETE new file contents for each modified file — every line must be present. Never use placeholders, ellipsis, or comments like "// ... rest of file". A downstream step will create the branch, commit the files, and open the PR.
+4. Choose decision="fix" if: you have read the relevant files, the root cause is clear and isolated, the change touches ≤${MAX_FILES_TO_EDIT} files, and you have confidence ≥${MIN_FIX_CONFIDENCE}. For each file, provide targeted search/replace edits. The \`search\` field must be an exact multi-line snippet copied verbatim from the file (include enough surrounding lines of context to be unique). The \`replace\` field is the same snippet with your fix applied. Do NOT rewrite entire files. Do NOT add comments that narrate what the code does (e.g. "// updated to fix X", "// changed this line"). Do NOT use placeholder or filler comments like "// rest of the code remains the same". Only include comments if the original code had them or if they are truly necessary to understand the change. A downstream step will apply your edits to the original files, commit them, and open the PR.
 5. Choose decision="analyze" if: confidence is <${MIN_FIX_CONFIDENCE}, the change touches >${MAX_FILES_TO_EDIT} files, the fix requires architecture decisions, or you could not find the relevant files.
 6. When analyzing: reference exact file paths, line numbers, and function names. Be specific.
 7. PR branch format: fix/monday-${mondayItemId}-{short-slug}
@@ -523,14 +539,40 @@ ${repoTreeSummary}
             );
             console.log(`search_code → ${result.length} matches`);
           } else if (call.name === "write_fix") {
-            writeFix = call.args;
-            result = { acknowledged: true };
-            console.log(
-              "write_fix called — decision:",
-              writeFix.decision,
-              "confidence:",
-              writeFix.confidence
-            );
+            const MAX_LINES_PER_EDIT = 30;
+            const proposedFix = call.args;
+            const filesToModify = proposedFix.files_to_modify ?? [];
+
+            const filesWithOversizedEdits =
+              proposedFix.decision === "fix"
+                ? filesToModify.filter((file) =>
+                    (file.edits ?? []).some((edit) => {
+                      const editLineCount = edit.search.split("\n").length;
+                      return editLineCount > MAX_LINES_PER_EDIT;
+                    })
+                  )
+                : [];
+
+            if (filesWithOversizedEdits.length > 0) {
+              const affectedPaths = filesWithOversizedEdits
+                .map((file) => file.path)
+                .join(", ");
+              console.log(
+                `write_fix rejected — oversized edits in: ${affectedPaths}`
+              );
+              result = {
+                error:
+                  `Your edits for ${affectedPaths} are too large. ` +
+                  `Each search block must only contain the specific lines being changed ` +
+                  `plus a few lines of surrounding context (max ~${MAX_LINES_PER_EDIT} lines). ` +
+                  `Do NOT use the entire file content as a search block. ` +
+                  `Break large changes into multiple smaller, targeted edits.`,
+              };
+            } else {
+              writeFix = proposedFix;
+              result = { acknowledged: true };
+              console.log("write_fix accepted");
+            }
           } else {
             console.warn("Unknown tool called:", call.name);
             result = { error: `Unknown tool: ${call.name}` };
