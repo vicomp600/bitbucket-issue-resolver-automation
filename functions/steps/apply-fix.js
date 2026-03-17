@@ -16,24 +16,28 @@ export async function run({
     `${process.env.BITBUCKET_USERNAME}:${process.env.BITBUCKET_API_KEY}`
   ).toString("base64");
 
-  async function bitbucketRequest(path, options = {}) {
+  async function bitbucketRequest(path, options = {}, maxRetries = 3) {
     const url = `https://api.bitbucket.org/2.0${path}`;
-    const method = options.method || "GET";
-    console.log(`[bitbucket] ${method} ${url}`);
-    console.log(
-      `[bitbucket] workspace=${workspace} user=${process.env.BITBUCKET_USERNAME}`
-    );
+
     if (options.body) console.log(`[bitbucket] body=${options.body}`);
 
-    const response = await fetch(url, {
-      ...options,
-      headers: { Authorization: `Basic ${bitbucketAuth}`, ...options.headers },
-    });
-    if (!response.ok) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const response = await fetch(url, {
+        ...options,
+        headers: { Authorization: `Basic ${bitbucketAuth}`, ...options.headers },
+      });
+      if (response.ok) return response;
+
       const body = await response.text();
-      throw new Error(`Bitbucket ${response.status} ${path}: ${body}`);
+      const isRetryable = response.status >= 500 || response.status === 429;
+      if (!isRetryable || attempt === maxRetries) {
+        throw new Error(`Bitbucket ${response.status} ${path}: ${body}`);
+      }
+
+      const waitMs = 2000 * Math.pow(2, attempt); // 2s, 4s, 8s
+      console.log(`Bitbucket ${response.status} on ${path}, retrying in ${waitMs / 1000}s (attempt ${attempt + 1}/${maxRetries})`);
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
     }
-    return response;
   }
 
   async function getLatestCommitHash(repoSlug, branchName) {
@@ -64,7 +68,11 @@ export async function run({
     formData.append("message", commitMessage);
     formData.append("parents", sourceCommitHash);
     for (const fileChange of filesToCommit) {
-      formData.append(fileChange.path, fileChange.new_content);
+      formData.append(
+        fileChange.path,
+        new Blob([fileChange.new_content], { type: "text/plain" }),
+        fileChange.path
+      );
     }
     await bitbucketRequest(`/repositories/${workspace}/${repoSlug}/src`, {
       method: "POST",
@@ -108,7 +116,27 @@ export async function run({
     return response.json();
   }
 
-  // Group file changes by repo
+  async function resolveEdits(repoSlug, filesToCommit, commitHash) {
+    for (const fileChange of filesToCommit) {
+      const response = await bitbucketRequest(
+        `/repositories/${workspace}/${repoSlug}/src/${commitHash}/${fileChange.path}`
+      );
+      let content = await response.text();
+
+      for (const edit of fileChange.edits) {
+        if (!content.includes(edit.search)) {
+          throw new Error(
+            `Edit failed: search block not found in ${fileChange.path}. ` +
+              `Search was: "${edit.search.slice(0, 120)}..."`
+          );
+        }
+        content = content.replace(edit.search, edit.replace);
+      }
+
+      fileChange.new_content = content;
+    }
+  }
+
   const filesByRepo = {};
   for (const fileChange of writeFix.files_to_modify) {
     if (!filesByRepo[fileChange.repo_slug])
@@ -130,6 +158,26 @@ export async function run({
     const sourceCommitHash =
       (await getBranchHeadHash(repoSlug, prBranchName)) ??
       (await getLatestCommitHash(repoSlug, targetBranch));
+
+    try {
+      await resolveEdits(repoSlug, filesToCommit, sourceCommitHash);
+    } catch (editError) {
+      console.error(`resolveEdits failed for ${repoSlug}:`, editError.message);
+      await fetch("https://slack.com/api/chat.postMessage", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          channel: channelId,
+          thread_ts,
+          text: `⚠️ Could not apply edits to \`${repoSlug}\`: ${editError.message}\n\nThe file may have changed since it was read. Please retry or apply the fix manually.`,
+        }),
+      });
+      throw editError;
+    }
+
     await commitFilesToNewBranch(
       repoSlug,
       prBranchName,
@@ -138,18 +186,27 @@ export async function run({
       sourceCommitHash
     );
 
+    const prTitle = `[${mondayItemId}] ${writeFix.pr_title ?? itemName}`;
+    const prDescription = [
+      `**What was done**`,
+      writeFix.fix_description,
+      "",
+      "---",
+      "",
+      `**Root cause**`,
+      writeFix.analysis,
+      "",
+      "---",
+      "",
+      `**References**`,
+      `Monday issue: ${mondayUrl}`,
+    ].join("\n");
+
     const pullRequest = await createPullRequest(
       repoSlug,
       prBranchName,
-      `[${mondayItemId}] ${itemName}`,
-      [
-        writeFix.fix_description,
-        "",
-        `**Root cause analysis:**`,
-        writeFix.analysis,
-        "",
-        `**Monday issue:** ${mondayUrl}`,
-      ].join("\n")
+      prTitle,
+      prDescription
     );
 
     pullRequestUrls.push(pullRequest.links.html.href);

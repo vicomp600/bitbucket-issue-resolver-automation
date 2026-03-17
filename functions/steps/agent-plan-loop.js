@@ -369,6 +369,11 @@ export async function run({
                 description:
                   "Human-readable summary of what the fix does. Required when decision=fix.",
               },
+              pr_title: {
+                type: "string",
+                description:
+                  "A concise, clear English title for the pull request describing what the fix does (e.g. 'Fix analytics consent default to enabled for new users'). Must be in English regardless of the Monday task language. Required when decision=fix.",
+              },
               suggested_approach: {
                 type: "string",
                 description:
@@ -411,6 +416,8 @@ ${repoTreeSummary}
 2. The root-level file tree for each repo is already provided above — do not call get_file_tree for the root. Only use get_file_tree to explore subdirectories that look relevant to the issue.
 3. Use search_code to find function names, error messages, or patterns mentioned in the issue.
 4. Choose decision="fix" if: you have read the relevant files, the root cause is clear and isolated, the change touches ≤${MAX_FILES_TO_EDIT} files, and you have confidence ≥${MIN_FIX_CONFIDENCE}. For each file, provide targeted search/replace edits. The \`search\` field must be an exact multi-line snippet copied verbatim from the file (include enough surrounding lines of context to be unique). The \`replace\` field is the same snippet with your fix applied. Do NOT rewrite entire files. Do NOT add comments that narrate what the code does (e.g. "// updated to fix X", "// changed this line"). Do NOT use placeholder or filler comments like "// rest of the code remains the same". Only include comments if the original code had them or if they are truly necessary to understand the change. A downstream step will apply your edits to the original files, commit them, and open the PR.
+   - Set \`pr_title\` to a concise English title describing the fix (e.g. "Fix analytics consent defaulting to disabled for new users"). Derive the title from your findings — do NOT copy the Monday task title verbatim, and always write it in English regardless of the task language.
+   - Write \`analysis\` as clear, human-readable prose or bullet points. Cover: what the root cause is, which files/functions are involved, and why the bug occurs. Do NOT include AI self-narration (e.g. "I will now...", "Let me check...", "Based on my investigation..."). Write as if explaining to a developer reviewing the PR.
 5. Choose decision="analyze" if: confidence is <${MIN_FIX_CONFIDENCE}, the change touches >${MAX_FILES_TO_EDIT} files, the fix requires architecture decisions, or you could not find the relevant files.
 6. When analyzing: reference exact file paths, line numbers, and function names. Be specific.
 7. PR branch format: fix/monday-${mondayItemId}-{short-slug}
