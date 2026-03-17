@@ -1,6 +1,6 @@
 # Taglibot
 
-An AI-powered Slack bot that automatically triages and fixes bugs by reading your Bitbucket codebase, analyzing Monday.com issues, and opening pull requests — all from a single slash command.
+An AI-powered Slack bot that automatically triages and fixes bugs by reading your Bitbucket codebase, analyzing Monday.com issues, and opening pull requests — all from a single slash command in Slack.
 
 ---
 
